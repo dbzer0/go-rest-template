@@ -1,0 +1,32 @@
+version: '3'
+
+services:
+  PROJECTNAME:
+    container_name: PROJECTNAME
+    build:
+      context: .
+      args:
+        - http_proxy
+        - https_proxy
+        - no_proxy
+    ports:
+     - "8080:8080"
+    environment:
+      - TESTING=1
+
+  unit:
+    container_name: unit
+    build:
+      context: .
+      dockerfile: Dockerfile-unit
+      args:
+        - http_proxy
+        - https_proxy
+        - no_proxy
+    volumes:
+        - /etc/localtime:/etc/localtime:ro
+        - .:/go/app/device.ufo/PROJECTNAME
+    working_dir: /go/app/device.ufo/PROJECTNAME/app
+    environment:
+      - UID=1000
+      - GID=1000
