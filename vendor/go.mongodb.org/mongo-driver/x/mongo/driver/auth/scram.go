@@ -14,10 +14,9 @@ package auth
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/xdg/scram"
-	"github.com/xdg/stringprep"
+	"github.com/xdg-go/scram"
+	"github.com/xdg-go/stringprep"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
 )
 
@@ -53,7 +52,7 @@ func newScramSHA1Authenticator(cred *Cred) (Authenticator, error) {
 func newScramSHA256Authenticator(cred *Cred) (Authenticator, error) {
 	passprep, err := stringprep.SASLprep.Prepare(cred.Password)
 	if err != nil {
-		return nil, newAuthError(fmt.Sprintf("error SASLprepping password '%s'", cred.Password), err)
+		return nil, newAuthError("error SASLprepping password", err)
 	}
 	client, err := scram.SHA256.NewClientUnprepped(cred.Username, passprep, "")
 	if err != nil {

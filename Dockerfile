@@ -1,20 +1,14 @@
 #
 # Контейнер сборки
 #
-FROM golang:1.14 as builder
-
-ARG DRONE
-ARG DRONE_TAG
-ARG DRONE_COMMIT
-ARG DRONE_BRANCH
+FROM golang:1.21 as builder
 
 ENV CGO_ENABLED=0
 
-COPY . /go/src/github.com/dbzer0/go-rest-template
-WORKDIR /go/src/github.com/dbzer0/go-rest-template
+COPY . /go/src/github.com/dbzer0/go-template
+WORKDIR /go/src/github.com/dbzer0/go-template
 RUN \
-    if [ -z "$DRONE" ] ; then echo "no drone" && version=`git describe --abbrev=6 --always --tag`; \
-    else version=${DRONE_TAG}${DRONE_BRANCH}-`echo ${DRONE_COMMIT} | cut -c 1-7` ; fi && \
+    if version=`git describe --abbrev=6 --always --tag`; \
     echo "version=$version" && \
     cd app && \
     go build -a -tags PROJECTNAME -installsuffix PROJECTNAME -ldflags "-X main.version=${version} -s -w" -o /go/bin/PROJECTNAME
@@ -47,6 +41,3 @@ COPY --from=alpine /etc/group /etc/group
 USER PROJECTNAME
 
 ENTRYPOINT ["/bin/PROJECTNAME"]
-
-
-

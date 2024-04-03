@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -14,14 +15,13 @@ import (
 
 	"github.com/hashicorp/logutils"
 	"github.com/jessevdk/go-flags"
-
 )
 
 var version = "unknown"
 
 type configuration struct {
-	DSName string `short:"n" long:"ds" env:"DATASTORE" description:"DataStore name (format: dgraph/null)" required:"false" default:"dgraph"`
-	DSDB   string `short:"d" long:"ds-db" env:"DATASTORE_DB" description:"DataStore database name (format: inventory)" required:"false" default:"inventory"`
+	DSName string `short:"n" long:"ds" env:"DATASTORE" description:"DataStore name (format: mongo/null)" required:"false" default:"mongo"`
+	DSDB   string `short:"d" long:"ds-db" env:"DATASTORE_DB" description:"DataStore database name (format: PROJECTNAME)" required:"false" default:"PROJECTNAME"`
 	DSURL  string `short:"u" long:"ds-url" env:"DATASTORE_URL" description:"DataStore URL (format: mongodb://localhost:27017)" required:"false" default:"mongodb://localhost:27017"`
 
 	ListenAddr string `short:"l" long:"listen" env:"LISTEN" description:"Listen Address (format: :8080|127.0.0.1:8080)" required:"false" default:":8080"`
@@ -42,10 +42,9 @@ func main() {
 	p := flags.NewParser(&opts, flags.Default)
 	if _, err := p.Parse(); err != nil {
 		log.Println("[ERROR] Ошибка парсинга опций:", err)
-		if flagsErr, ok := err.(*flags.Error); ok && flagsErr.Type == flags.ErrHelp {
+		var flagsErr *flags.Error
+		if errors.As(err, &flagsErr) && errors.Is(flagsErr.Type, flags.ErrHelp) {
 			os.Exit(0)
-		} else {
-			os.Exit(1)
 		}
 	}
 

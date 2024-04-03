@@ -24,14 +24,14 @@ type Resolver struct {
 // DefaultResolver is a Resolver that uses the default Resolver from the net package.
 var DefaultResolver = &Resolver{net.LookupSRV, net.LookupTXT}
 
-// ParseHosts uses the srv string to get the hosts.
-func (r *Resolver) ParseHosts(host string, stopOnErr bool) ([]string, error) {
+// ParseHosts uses the srv string and service name to get the hosts.
+func (r *Resolver) ParseHosts(host string, srvName string, stopOnErr bool) ([]string, error) {
 	parsedHosts := strings.Split(host, ",")
 
 	if len(parsedHosts) != 1 {
 		return nil, fmt.Errorf("URI with SRV must include one and only one hostname")
 	}
-	return r.fetchSeedlistFromSRV(parsedHosts[0], stopOnErr)
+	return r.fetchSeedlistFromSRV(parsedHosts[0], srvName, stopOnErr)
 }
 
 // GetConnectionArgsFromTXT gets the TXT record associated with the host and returns the connection arguments.
@@ -64,7 +64,7 @@ func (r *Resolver) GetConnectionArgsFromTXT(host string) ([]string, error) {
 	return connectionArgsFromTXT, nil
 }
 
-func (r *Resolver) fetchSeedlistFromSRV(host string, stopOnErr bool) ([]string, error) {
+func (r *Resolver) fetchSeedlistFromSRV(host string, srvName string, stopOnErr bool) ([]string, error) {
 	var err error
 
 	_, _, err = net.SplitHostPort(host)
@@ -75,14 +75,20 @@ func (r *Resolver) fetchSeedlistFromSRV(host string, stopOnErr bool) ([]string, 
 		return nil, fmt.Errorf("URI with srv must not include a port number")
 	}
 
-	_, addresses, err := r.LookupSRV("mongodb", "tcp", host)
-	if err != nil {
+	// default to "mongodb" as service name if not supplied
+	if srvName == "" {
+		srvName = "mongodb"
+	}
+	_, addresses, err := r.LookupSRV(srvName, "tcp", host)
+	if err != nil && strings.Contains(err.Error(), "cannot unmarshal DNS message") {
+		return nil, fmt.Errorf("see https://pkg.go.dev/go.mongodb.org/mongo-driver/mongo#hdr-Potential_DNS_Issues: %w", err)
+	} else if err != nil {
 		return nil, err
 	}
 
 	trimmedHost := strings.TrimSuffix(host, ".")
 
-	var parsedHosts []string
+	parsedHosts := make([]string, 0, len(addresses))
 	for _, address := range addresses {
 		trimmedAddressTarget := strings.TrimSuffix(address.Target, ".")
 		err := validateSRVResult(trimmedAddressTarget, trimmedHost)
@@ -98,8 +104,8 @@ func (r *Resolver) fetchSeedlistFromSRV(host string, stopOnErr bool) ([]string, 
 }
 
 func validateSRVResult(recordFromSRV, inputHostName string) error {
-	separatedInputDomain := strings.Split(inputHostName, ".")
-	separatedRecord := strings.Split(recordFromSRV, ".")
+	separatedInputDomain := strings.Split(strings.ToLower(inputHostName), ".")
+	separatedRecord := strings.Split(strings.ToLower(recordFromSRV), ".")
 	if len(separatedRecord) < 2 {
 		return errors.New("DNS name must contain at least 2 labels")
 	}
@@ -120,8 +126,9 @@ func validateSRVResult(recordFromSRV, inputHostName string) error {
 }
 
 var allowedTXTOptions = map[string]struct{}{
-	"authsource": {},
-	"replicaset": {},
+	"authsource":   {},
+	"replicaset":   {},
+	"loadbalanced": {},
 }
 
 func validateTXTResult(paramsFromTXT []string) error {
