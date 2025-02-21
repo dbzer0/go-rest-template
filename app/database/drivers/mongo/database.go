@@ -21,7 +21,7 @@ type Mongo struct {
 	dbName  string
 
 	client *mongo.Client
-	DB     *mongo.Database
+	db     *mongo.Database
 
 	connectionTimeout time.Duration
 	ensureIdxTimeout  time.Duration
@@ -61,7 +61,7 @@ func (m *Mongo) Connect() error {
 		return err
 	}
 
-	m.DB = m.client.Database(m.dbName)
+	m.db = m.client.Database(m.dbName)
 
 	// убеждаемся что созданы все необходимые индексы
 	return m.ensureIndexes()
@@ -78,17 +78,6 @@ func (m *Mongo) Close(ctx context.Context) error {
 	return m.client.Disconnect(ctx)
 }
 
-// убеждается что все индексы построены
-func (m *Mongo) ensureIndexes() error {
-	ctx, cancel := context.WithTimeout(context.Background(), m.connectionTimeout)
-	defer cancel()
-
-	// TODO
-	_ = ctx
-
-	return nil
-}
-
 // indexExistsByName проверяет существование индекса с именем name.
 func (m *Mongo) indexExistsByName(ctx context.Context, collection *mongo.Collection, name string) (bool, error) {
 	cur, err := collection.Indexes().List(ctx)
@@ -103,4 +92,23 @@ func (m *Mongo) indexExistsByName(ctx context.Context, collection *mongo.Collect
 	}
 
 	return false, nil
+}
+
+// Вспомогательная функция для получения существующих индексов
+func (m *Mongo) existingIndexes(ctx context.Context, col *mongo.Collection) (map[string]bool, error) {
+	indexes := make(map[string]bool)
+	cursor, err := col.Indexes().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		indexName := cursor.Current.Lookup("name").StringValue()
+		indexes[indexName] = true
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return indexes, nil
 }

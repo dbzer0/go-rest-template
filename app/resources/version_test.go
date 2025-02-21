@@ -11,8 +11,8 @@ import (
 )
 
 // Тестирует uri "/version" на валидность ответа, код возврата и тип контента
-func TestGetVersion(t *testing.T) {
-	req, _ := http.NewRequest("GET", "/version", nil)
+func TestVersion(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "/version", nil)
 	w := httptest.NewRecorder()
 
 	r := chi.NewRouter()
@@ -23,6 +23,6 @@ func TestGetVersion(t *testing.T) {
 
 	assert.Equal(t, w.Body.String(), version, "VersionResponse should be"+version+", was "+w.Body.String())
 	assert.Equal(t, w.Code, http.StatusOK, "Response HTTP code should be 200, was: %d", w.Code)
-	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"),
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"),
 		"Content-Type should be application/json, was "+w.Header().Get("Content-Type"))
 }

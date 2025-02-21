@@ -15,23 +15,26 @@ type VersionResponse struct {
 	Version string `json:"version"`
 }
 
+func NewVersionResponse(version string) *VersionResource {
+	return &VersionResource{version: version}
+}
+
 // VersionResource - структура содержащая версию API и приложения.
 type VersionResource struct {
-	Version string
+	version string
 }
 
 func (vr VersionResource) Routes() chi.Router {
 	r := chi.NewRouter()
 
-	r.Get("/", vr.Get)
+	r.Get("/", vr.Version)
 
 	return r
 }
 
-// ByLogin возвращает структуру с описанием версии.
-func (vr VersionResource) Get(w http.ResponseWriter, r *http.Request) {
+func (vr VersionResource) Version(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, VersionResponse{
 		API:     APIVersion,
-		Version: vr.Version,
+		Version: vr.version,
 	})
 }

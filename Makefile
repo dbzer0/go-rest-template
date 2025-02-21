@@ -4,6 +4,10 @@ build:
 build-cross-platform:
 	$(MAKE) -C app bin-cross-platform
 
+docker:
+	docker-compose build
+	docker-compose push
+
 clean:
 	$(MAKE) -C app clean
 	if [ -f coverage.html ] ; then rm coverage.html ; fi

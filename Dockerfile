@@ -1,12 +1,12 @@
 #
 # Контейнер сборки
 #
-FROM golang:1.21 as builder
+FROM golang:1.22 as builder
 
 ENV CGO_ENABLED=0
 
-COPY . /go/src/github.com/dbzer0/go-template
-WORKDIR /go/src/github.com/dbzer0/go-template
+COPY . /go/src/github.com/dbzer0/go-rest-template
+WORKDIR /go/src/github.com/dbzer0/go-rest-template
 RUN \
     if version=`git describe --abbrev=6 --always --tag`; \
     echo "version=$version" && \
