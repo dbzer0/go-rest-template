@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/dbzer0/go-rest-template/app/utils"
 	"github.com/jessevdk/go-flags"
 )
 
@@ -26,6 +27,9 @@ func (c *RootCommand) Execute(ctx context.Context) error {
 	if err := c.parseFlags(); err != nil {
 		return err
 	}
+
+	// сбрасываем чувствительные переменные
+	utils.ResetEnv(c.opts.DSURL, c.opts.DSDB)
 
 	if err := NewLogCommand(c.opts.Dbg).Execute(ctx); err != nil {
 		return err

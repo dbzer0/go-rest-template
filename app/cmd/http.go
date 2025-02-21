@@ -2,76 +2,87 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/dbzer0/go-rest-template/app/resources"
 	"github.com/dbzer0/go-rest-template/app/resources/api"
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
 
-const compressLevel = 5
+const (
+	compressLevel   = 5
+	readTimeout     = 5 * time.Second
+	writeTimeout    = 30 * time.Second
+	shutdownTimeout = 10 * time.Second
+)
 
+// HTTPCommand инкапсулирует запуск HTTP-сервера.
 type HTTPCommand struct {
 	srv *httpServer
 }
 
-func NewHTTPCommand(
-	ctx context.Context,
-	opts *Configuration,
-	version string,
-) *HTTPCommand {
+// NewHTTPCommand создаёт новый HTTPCommand.
+func NewHTTPCommand(ctx context.Context, opts *Configuration, version string) *HTTPCommand {
 	return &HTTPCommand{
 		srv: newHTTPServer(ctx, opts, version),
 	}
 }
 
+// Execute запускает HTTP-сервер.
 func (c *HTTPCommand) Execute(ctx context.Context) error {
 	return c.srv.Run()
 }
 
+// httpServer содержит настройки и состояние HTTP-сервера.
 type httpServer struct {
 	Address           string
 	CertFile, KeyFile *string
 	BasePath          string
 	version           string
-	masterCtx         context.Context
-	idleConnsClosed   chan struct{}
-	IsTesting         bool
+
+	masterCtx context.Context
+	wg        sync.WaitGroup
+	IsTesting bool
 }
 
+// newHTTPServer инициализирует httpServer, заполняя его конфигурацией.
 func newHTTPServer(ctx context.Context, opts *Configuration, version string) *httpServer {
-	srv := &httpServer{
-		masterCtx:       ctx,
-		Address:         opts.ListenAddr,
-		BasePath:        opts.BasePath,
-		version:         version,
-		idleConnsClosed: make(chan struct{}),
-		IsTesting:       opts.IsTesting,
+	return &httpServer{
+		masterCtx: ctx,
+		Address:   opts.ListenAddr,
+		BasePath:  opts.BasePath,
+		version:   version,
+		IsTesting: opts.IsTesting,
+		CertFile:  nonEmptyPtr(opts.CertFile),
+		KeyFile:   nonEmptyPtr(opts.KeyFile),
 	}
-
-	if opts.CertFile != "" {
-		srv.CertFile = &opts.CertFile
-	}
-
-	if opts.KeyFile != "" {
-		srv.KeyFile = &opts.KeyFile
-	}
-
-	return srv
 }
 
+// nonEmptyPtr возвращает указатель на строку, если она не пустая.
+func nonEmptyPtr(s string) *string {
+	if s != "" {
+		return &s
+	}
+	return nil
+}
+
+// setupRouter настраивает маршруты и middleware для сервера.
 func (srv *httpServer) setupRouter() chi.Router {
 	r := chi.NewRouter()
 
-	r.Use(middleware.NoCache)
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.NewCompressor(compressLevel).Handler)
+	r.Use(middleware.NoCache)
+	r.Use(middleware.Compress(compressLevel))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins(srv.IsTesting),
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -81,12 +92,14 @@ func (srv *httpServer) setupRouter() chi.Router {
 		MaxAge:           300,
 	}))
 
+	// Монтируем обработчики
 	r.Mount("/version", resources.NewVersionResponse(srv.version).Routes())
 	r.Mount("/api/v1", api.NewAPI().Routes())
 
 	return r
 }
 
+// allowedOrigins возвращает список разрешённых источников в зависимости от режима тестирования.
 func allowedOrigins(testing bool) []string {
 	if testing {
 		return []string{"*"}
@@ -94,45 +107,43 @@ func allowedOrigins(testing bool) []string {
 	return []string{}
 }
 
+// Run запускает HTTP-сервер и обрабатывает graceful shutdown.
 func (srv *httpServer) Run() error {
-	const (
-		readTimeout  = 5 * time.Second
-		writeTimeout = 30 * time.Second
-	)
+	router := srv.setupRouter()
 
-	s := http.Server{
+	server := &http.Server{
 		Addr:         srv.Address,
-		Handler:      chi.ServerBaseContext(srv.masterCtx, srv.setupRouter()),
+		Handler:      router,
+		BaseContext:  func(_ net.Listener) context.Context { return srv.masterCtx },
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
 	}
 
+	// Запускаем горутину для graceful shutdown
+	srv.wg.Add(1)
 	go func() {
+		defer srv.wg.Done()
 		<-srv.masterCtx.Done()
-		if err := s.Shutdown(srv.masterCtx); err != nil {
+		ctxShutdown, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := server.Shutdown(ctxShutdown); err != nil {
 			log.Printf("[ERROR] HTTP server Shutdown: %v", err)
 		}
-		srv.Wait()
 	}()
 
-	log.Printf("[INFO] serving HTTP on \"%s\"", srv.Address)
+	log.Printf("[INFO] Serving HTTP on %q", srv.Address)
 
 	var err error
 	if srv.CertFile == nil && srv.KeyFile == nil {
-		if err = s.ListenAndServe(); err != nil {
-			close(srv.idleConnsClosed)
-			return err
-		}
+		err = server.ListenAndServe()
 	} else {
-		if err = s.ListenAndServeTLS(*srv.CertFile, *srv.KeyFile); err != nil {
-			close(srv.idleConnsClosed)
-			return err
-		}
+		err = server.ListenAndServeTLS(*srv.CertFile, *srv.KeyFile)
 	}
 
-	return nil
-}
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
 
-func (srv *httpServer) Wait() {
-	<-srv.idleConnsClosed
+	srv.wg.Wait() // Ждём завершения shutdown
+	return nil
 }
