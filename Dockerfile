@@ -1,43 +1,45 @@
 #
-# Контейнер сборки
+# Этап сборки (builder)
 #
-FROM golang:1.22 as builder
-
+FROM golang:1.22 AS builder
 ENV CGO_ENABLED=0
 
-COPY . /go/src/github.com/dbzer0/go-rest-template
 WORKDIR /go/src/github.com/dbzer0/go-rest-template
-RUN \
-    if version=`git describe --abbrev=6 --always --tag`; \
+COPY . .
+
+# Вычисляем версию; если git не выдаст тег, используем "dev"
+RUN version=$(git describe --abbrev=6 --always --tag || echo "dev") && \
     echo "version=$version" && \
     cd app && \
-    go build -a -tags PROJECTNAME -installsuffix PROJECTNAME -ldflags "-X main.version=${version} -s -w" -o /go/bin/PROJECTNAME
+    go build -a -tags PROJECTNAME -installsuffix PROJECTNAME -mod=vendor \
+      -ldflags "-X main.version=${version} -s -w" \
+      -o /go/bin/PROJECTNAME
 
 #
-# Контейнер для получения актуальных SSL/TLS сертификатов
+# Этап базового образа (base) с сертификатами и настройкой пользователя
 #
-FROM alpine as alpine
-COPY --from=builder /etc/ssl/certs /etc/ssl/certs
-RUN addgroup -S PROJECTNAME && adduser -S PROJECTNAME -G PROJECTNAME
-
-ENTRYPOINT [ "/bin/PROJECTNAME" ]
+FROM alpine AS base
+RUN apk --no-cache add ca-certificates && \
+    addgroup -S PROJECTNAME && \
+    adduser -S PROJECTNAME -G PROJECTNAME
 
 #
-# Контейнер рантайма
+# Финальный образ рантайма (final)
 #
 FROM scratch
+
+# Копируем бинарник
 COPY --from=builder /go/bin/PROJECTNAME /bin/PROJECTNAME
 
-# копируем сертификаты из alpine
-COPY --from=alpine /etc/ssl/certs /etc/ssl/certs
+# Копируем сертификаты из базового образа
+COPY --from=base /etc/ssl/certs /etc/ssl/certs
 
-# копируем документацию
-COPY --from=alpine /usr/share/PROJECTNAME /usr/share/PROJECTNAME
+# Если есть документация, её можно скопировать из базового образа
+# COPY --from=base /usr/share/PROJECTNAME /usr/share/PROJECTNAME
 
-# копируем пользователя и группу из alpine
-COPY --from=alpine /etc/passwd /etc/passwd
-COPY --from=alpine /etc/group /etc/group
+# Копируем файлы с информацией о пользователях и группах
+COPY --from=base /etc/passwd /etc/passwd
+COPY --from=base /etc/group /etc/group
 
 USER PROJECTNAME
-
 ENTRYPOINT ["/bin/PROJECTNAME"]
