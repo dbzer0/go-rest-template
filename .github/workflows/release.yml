@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.22
+
+      - name: Build
+        working-directory: ./app
+        run: go build -v .
+
+      - name: Test
+        working-directory: ./app
+        run: go test -v .
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ github.repository }}:latest
+
+      - name: Deploy to prod
+        run: curl ${{ secrets.WEBHOOK_URL }}
+
+      - name: Send Telegram message (Success)
+        if: ${{ success() }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          args: '👨🏻‍💻 Пользователь ${{ github.actor }} в `${{ github.repository }}` выполнил ${{ github.event_name }}, 💬 «${{ github.event.head_commit.message }}» 🔗 https://github.com/${{ github.repository }}/commit/${{ github.sha }}.'
+
+      - name: Send Telegram message (Failure)
+        if: ${{ failure() }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          args: '🔥 Сборка `${{ github.repository }}` (${{ github.actor }}) завершилась статусом ${{ job.status }}. 💬 «${{ github.event.head_commit.message }}» 🔗 https://github.com/${{ github.repository }}/commit/${{ github.sha }}.'
