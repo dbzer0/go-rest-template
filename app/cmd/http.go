@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dbzer0/go-rest-template/app/resources"
 	"github.com/dbzer0/go-rest-template/app/resources/api"
+	"github.com/dbzer0/go-rest-template/app/resources/version"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -45,7 +45,7 @@ type httpServer struct {
 	Address           string
 	CertFile, KeyFile *string
 	BasePath          string
-	version           string
+	serviceVersion    string
 
 	masterCtx context.Context
 	wg        sync.WaitGroup
@@ -55,13 +55,13 @@ type httpServer struct {
 // newHTTPServer инициализирует httpServer, заполняя его конфигурацией.
 func newHTTPServer(ctx context.Context, opts *Configuration, version string) *httpServer {
 	return &httpServer{
-		masterCtx: ctx,
-		Address:   opts.ListenAddr,
-		BasePath:  opts.BasePath,
-		version:   version,
-		IsTesting: opts.IsTesting,
-		CertFile:  nonEmptyPtr(opts.CertFile),
-		KeyFile:   nonEmptyPtr(opts.KeyFile),
+		masterCtx:      ctx,
+		Address:        opts.ListenAddr,
+		BasePath:       opts.BasePath,
+		serviceVersion: version,
+		IsTesting:      opts.IsTesting,
+		CertFile:       nonEmptyPtr(opts.CertFile),
+		KeyFile:        nonEmptyPtr(opts.KeyFile),
 	}
 }
 
@@ -92,8 +92,10 @@ func (srv *httpServer) setupRouter() chi.Router {
 		MaxAge:           300,
 	}))
 
+	const apiVersion = "v1"
+
 	// Монтируем обработчики
-	r.Mount("/version", resources.NewVersionResponse(srv.version).Routes())
+	r.Mount("/version", version.NewResource(srv.serviceVersion, apiVersion).Routes())
 	r.Mount("/api/v1", api.NewAPI().Routes())
 
 	return r
@@ -127,8 +129,10 @@ func (srv *httpServer) Run() error {
 		ctxShutdown, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(ctxShutdown); err != nil {
-			log.Printf("[ERROR] HTTP server Shutdown: %v", err)
+			log.Printf("[ERROR] HTTP server shutdown failed: %v", err)
+			return
 		}
+		log.Printf("[INFO] HTTP server stopped gracefully")
 	}()
 
 	log.Printf("[INFO] serving HTTP server on %q", srv.Address)
