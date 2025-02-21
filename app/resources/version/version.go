@@ -10,7 +10,7 @@ import (
 // response - ответ на запрос версии.
 type response struct {
 	APIVersion     string `json:"api"`
-	ServiceVersion string `json:"ServiceVersion"`
+	ServiceVersion string `json:"version"`
 }
 
 func NewResource(serviceVersion, apiVersion string) *Resource {

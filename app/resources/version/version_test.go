@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Тестирует uri "/ServiceVersion" на валидность ответа, код возврата и тип контента
+// Тестирует uri "/version" на валидность ответа, код возврата и тип контента
 func TestVersion(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "/version", nil)
 	w := httptest.NewRecorder()
 
 	r := chi.NewRouter()
 	r.Mount("/ServiceVersion", Resource{}.Routes())
-	version := fmt.Sprintf("{\"api\":\"%s\",\"ServiceVersion\":\"\"}\n", APIVersion)
+	version := fmt.Sprintf("{\"api\":\"%s\",\"ServiceVersion\":\"\"}\n", "v1")
 
 	r.ServeHTTP(w, req)
 
