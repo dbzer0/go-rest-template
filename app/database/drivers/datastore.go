@@ -7,5 +7,10 @@ type DataStore interface {
 	Close(ctx context.Context) error
 	Connect() error
 
-	// расширяем функционал datastore здесь
+	// расширяем функционал DataStore здесь
+	OrdersRepository
+}
+
+type OrdersRepository interface {
+	Orders() error
 }

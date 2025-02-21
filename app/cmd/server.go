@@ -7,7 +7,7 @@ import (
 
 	"github.com/dbzer0/go-rest-template/app/database"
 	"github.com/dbzer0/go-rest-template/app/database/drivers"
-	"github.com/dbzer0/go-rest-template/app/manager/test"
+	"github.com/dbzer0/go-rest-template/app/manager/orders"
 	"github.com/pkg/errors"
 )
 
@@ -30,8 +30,8 @@ func (c *ServerCommand) Execute(ctx context.Context) error {
 	}
 	defer c.closeDatastore(ctx, ds)
 
-	testManager := test.NewManager(ds)
-	_ = testManager
+	testManager := orders.NewManager(ds) // TODO: пример
+	testManager.Create(ctx)
 
 	httpCmd := NewHTTPCommand(
 		ctx,
@@ -49,10 +49,6 @@ func (c *ServerCommand) setupDatastore(ctx context.Context) (drivers.DataStore, 
 		DataBaseName:  c.opts.DSDB,
 	})
 	if err != nil {
-		return nil, err
-	}
-
-	if err = ds.Connect(); err != nil {
 		return nil, err
 	}
 

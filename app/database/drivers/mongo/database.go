@@ -25,9 +25,10 @@ type Mongo struct {
 
 	connectionTimeout time.Duration
 	ensureIdxTimeout  time.Duration
-}
 
-func (m *Mongo) Name() string { return "Mongo" }
+	// TODO: Встраиваем интерфейсы репозиториев
+	drivers.OrdersRepository
+}
 
 func New(conf drivers.DataStoreConfig) (drivers.DataStore, error) {
 	if conf.URL == "" {
@@ -47,25 +48,47 @@ func New(conf drivers.DataStoreConfig) (drivers.DataStore, error) {
 }
 
 func (m *Mongo) Connect() error {
-	var err error
-
 	ctx, cancel := context.WithTimeout(context.Background(), m.connectionTimeout)
 	defer cancel()
 
+	var err error
 	m.client, err = mongo.Connect(ctx, options.Client().ApplyURI(m.connURL))
 	if err != nil {
 		return err
 	}
 
-	if err := m.Ping(); err != nil {
+	if err = m.Ping(); err != nil {
 		return err
 	}
 
 	m.db = m.client.Database(m.dbName)
 
-	// убеждаемся что созданы все необходимые индексы
+	// TODO: Инициализируем репозитории и встраиваем его
+	m.OrdersRepository = NewOrdersRepository(m.db)
+
+	// Автоматически создаем индексы
 	return m.ensureIndexes()
 }
+
+func (m *Mongo) ensureIndexes() error {
+	ctx, cancel := context.WithTimeout(context.Background(), m.ensureIdxTimeout)
+	defer cancel()
+
+	// TODO: Собираем все репозитории, отвечающие за создание индексов.
+	ensurers := []IndexEnsurer{
+		NewOrdersRepository(m.db),
+	}
+
+	for _, e := range ensurers {
+		if err := e.EnsureIndexes(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *Mongo) Name() string { return "Mongo" }
 
 func (m *Mongo) Ping() error {
 	ctx, cancel := context.WithTimeout(context.Background(), m.connectionTimeout)
@@ -76,22 +99,6 @@ func (m *Mongo) Ping() error {
 
 func (m *Mongo) Close(ctx context.Context) error {
 	return m.client.Disconnect(ctx)
-}
-
-// indexExistsByName проверяет существование индекса с именем name.
-func (m *Mongo) indexExistsByName(ctx context.Context, collection *mongo.Collection, name string) (bool, error) {
-	cur, err := collection.Indexes().List(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	for cur.Next(ctx) {
-		if name == cur.Current.Lookup("name").StringValue() {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // Вспомогательная функция для получения существующих индексов

@@ -1,4 +1,4 @@
-package test
+package orders
 
 import (
 	"context"
@@ -7,14 +7,15 @@ import (
 )
 
 type Manager struct {
-	ds drivers.DataStore
+	repo drivers.OrdersRepository
 }
 
 // NewManager создаёт новый менеджер профилей клиентов.
-func NewManager(ds drivers.DataStore) *Manager {
-	return &Manager{ds: ds}
+func NewManager(repo drivers.OrdersRepository) *Manager {
+	return &Manager{repo: repo}
 }
 
 func (m *Manager) Create(ctx context.Context) error {
+	m.repo.Orders()
 	return nil
 }
