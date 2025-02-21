@@ -1,69 +1,112 @@
 package database
 
 import (
-	"log"
+	"fmt"
+	"sync"
 
 	"github.com/dbzer0/go-rest-template/app/database/drivers"
 	"github.com/dbzer0/go-rest-template/app/database/drivers/mongo"
-
 	"github.com/pkg/errors"
 )
 
+// DataStoreFactory определяет функцию создания DataStore
 type DataStoreFactory func(conf drivers.DataStoreConfig) (drivers.DataStore, error)
 
-// dataStoreFactories содержит все доступыне DataStore фабрики
-var dataStoreFactories = make(map[string]DataStoreFactory)
+// Registry управляет регистрацией фабрик датасторов
+type Registry struct {
+	mu        sync.RWMutex
+	factories map[string]DataStoreFactory
+}
 
-// Register регистрирует новую фабрику.
-// Если фабрика была зарегистрирована раньше, то сообщает об этом.
-// Если фабрика не существует, то сообщает об этом.
-func Register(name string, factory DataStoreFactory) error {
+// NewRegistry создает новый реестр датасторов
+func NewRegistry() *Registry {
+	r := &Registry{
+		factories: make(map[string]DataStoreFactory),
+	}
+	r.registerDefaults()
+	return r
+}
+
+// registerDefaults регистрирует датасторы по умолчанию
+func (r *Registry) registerDefaults() {
+	// Здесь можно добавить больше драйверов
+	must(r.Register("mongo", mongo.New))
+}
+
+// Register регистрирует новую фабрику датастора
+func (r *Registry) Register(name string, factory DataStoreFactory) error {
 	if factory == nil {
-		return errors.Errorf("datastore factory %s does not exist.", name)
+		return fmt.Errorf("datastore factory '%s' cannot be nil", name)
 	}
 
-	_, registered := dataStoreFactories[name]
-	if registered {
-		log.Printf("[WARNING] datastore factory %s already registered. Ignoring.", name)
-	} else {
-		dataStoreFactories[name] = factory
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.factories[name]; exists {
+		return fmt.Errorf("datastore factory '%s' is already registered", name)
 	}
 
+	r.factories[name] = factory
 	return nil
 }
 
-func init() {
-	if err := Register("mongo", mongo.New); err != nil {
-		log.Panic(err)
-	}
-}
+// Create создает новый экземпляр датастора
+func (r *Registry) Create(conf drivers.DataStoreConfig) (drivers.DataStore, error) {
+	r.mu.RLock()
+	factory, exists := r.factories[conf.DataStoreName]
+	r.mu.RUnlock()
 
-func New(conf drivers.DataStoreConfig) (drivers.DataStore, error) {
-	engineFactory, ok := dataStoreFactories[conf.DataStoreName]
-	if !ok {
-		// выбран неверный datastore, получаем список доступных и отдаем его
-		// пользователю
-		availableDataStores := make([]string, 0, len(dataStoreFactories)-1)
-		for k := range dataStoreFactories {
-			availableDataStores = append(availableDataStores, k)
-		}
-
-		return nil, ErrInvalidDataStoreName.Error(availableDataStores)
+	if !exists {
+		return nil, NewErrInvalidDataStore(r.AvailableDrivers())
 	}
 
-	return engineFactory(conf)
+	return factory(conf)
 }
 
-// Connect подключение к БД
+// AvailableDrivers возвращает список доступных драйверов
+func (r *Registry) AvailableDrivers() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	drivers := make([]string, 0, len(r.factories))
+	for name := range r.factories {
+		drivers = append(drivers, name)
+	}
+	return drivers
+}
+
+// DefaultRegistry глобальный реестр по умолчанию
+var DefaultRegistry = NewRegistry()
+
+// Connect создает и подключает датастор
 func Connect(conf drivers.DataStoreConfig) (drivers.DataStore, error) {
-	ds, err := New(conf)
+	ds, err := DefaultRegistry.Create(conf)
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot create datastore")
+		return nil, errors.Wrap(err, "failed to create datastore")
 	}
 
 	if err = ds.Connect(); err != nil {
-		return nil, errors.Wrap(err, "cannot connect to database")
+		return nil, errors.Wrap(err, "failed to connect to database")
 	}
 
 	return ds, nil
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+// ErrInvalidDataStore представляет ошибку неверного датастора
+type ErrInvalidDataStore struct {
+	AvailableDrivers []string
+}
+
+func NewErrInvalidDataStore(drivers []string) error {
+	return &ErrInvalidDataStore{AvailableDrivers: drivers}
+}
+
+func (e *ErrInvalidDataStore) Error() string {
+	return fmt.Sprintf("invalid datastore name, available drivers: %v", e.AvailableDrivers)
 }
