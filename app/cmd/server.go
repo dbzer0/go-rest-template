@@ -8,6 +8,7 @@ import (
 	"github.com/dbzer0/go-rest-template/app/database"
 	"github.com/dbzer0/go-rest-template/app/database/drivers"
 	"github.com/dbzer0/go-rest-template/app/manager/test"
+	"github.com/pkg/errors"
 )
 
 type ServerCommand struct {
@@ -25,9 +26,9 @@ func NewServerCommand(opts *Configuration, version string) *ServerCommand {
 func (c *ServerCommand) Execute(ctx context.Context) error {
 	ds, err := c.setupDatastore(ctx)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to setup datastore")
 	}
-	defer ds.Close(context.Background())
+	defer c.closeDatastore(ctx, ds)
 
 	testManager := test.NewManager(ds)
 	_ = testManager
@@ -57,4 +58,12 @@ func (c *ServerCommand) setupDatastore(ctx context.Context) (drivers.DataStore, 
 
 	log.Printf("[INFO] connected to %s", ds.Name())
 	return ds, nil
+}
+
+func (c *ServerCommand) closeDatastore(ctx context.Context, ds drivers.DataStore) {
+	if err := ds.Close(ctx); err != nil {
+		log.Printf("[ERROR] failed to close datastore connection: %v", err)
+		return
+	}
+	log.Printf("[INFO] closed datastore connection")
 }

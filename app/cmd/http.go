@@ -131,7 +131,7 @@ func (srv *httpServer) Run() error {
 		}
 	}()
 
-	log.Printf("[INFO] Serving HTTP on %q", srv.Address)
+	log.Printf("[INFO] serving HTTP server on %q", srv.Address)
 
 	var err error
 	if srv.CertFile == nil && srv.KeyFile == nil {
