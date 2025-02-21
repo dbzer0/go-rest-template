@@ -1,49 +1,74 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail  # Более строгий режим с проверкой неопределенных переменных
 
-workdir=.cover
-profile="$workdir/cover.out"
-mode=count
+# Конфигурация
+WORKDIR=".cover"
+PROFILE="$WORKDIR/cover.out"
+MODE="count"
+COVERAGE_HTML="coverage.html"
 
+# Очистка при выходе
+cleanup() {
+    if [[ "${KEEP_WORKDIR:-}" != "true" ]]; then
+        echo "Cleaning up temporary files..."
+        rm -rf "$WORKDIR"
+    fi
+}
+trap cleanup EXIT
+
+# Генерация данных покрытия
 generate_cover_data() {
-    rm -rf "$workdir"
-    mkdir "$workdir"
+    echo "Generating cover data to '$WORKDIR'..."
+    rm -rf "$WORKDIR"
+    mkdir -p "$WORKDIR"
 
-    for pkg in "$@"; do
-        f="$workdir/$(echo $pkg | tr / -).cover"
-        go test -covermode="$mode" -coverprofile="$f" "$pkg"
+    local packages
+    packages=$(go list ./...)
+
+    for pkg in $packages; do
+        local outfile="$WORKDIR/$(echo "$pkg" | tr '/' '-').cover"
+        echo "Testing package: $pkg"
+        go test -covermode="$MODE" -coverprofile="$outfile" "$pkg" || {
+            echo "Error testing package: $pkg"
+            return 1
+        }
     done
 
-    echo "mode: $mode" >"$profile"
-    grep -h -v "^mode:" "$workdir"/*.cover >>"$profile"
+    echo "mode: $MODE" >"$PROFILE"
+    grep -h -v "^mode:" "$WORKDIR"/*.cover >>"$PROFILE"
 }
 
+# Показ отчета по функциям
 show_cover_report_func() {
-    go tool cover -func="$profile"
+    echo "Generating functional coverage report..."
+    go tool cover -func="$PROFILE"
 }
 
+# Генерация HTML отчета
 show_cover_report_html() {
-    go tool cover -html="$profile" -o ../coverage.html
+    echo "Generating HTML coverage report to '$COVERAGE_HTML'..."
+    go tool cover -html="$PROFILE" -o "$COVERAGE_HTML"
 }
 
-echo "generate cover data to \"$workdir\"..."
-generate_cover_data $(go list ./...)
-echo "done!"
+# Установка прав доступа
+set_permissions() {
+    if [[ -n "${UID:-}" ]]; then
+        echo "Setting UID to $UID..."
+        chown -R "$UID" "$COVERAGE_HTML" "$WORKDIR"
+    fi
 
-echo "runing unit tests..."
-show_cover_report_func
-echo "done!"
+    if [[ -n "${GID:-}" ]]; then
+        echo "Setting GID to $GID..."
+        chown -R ":$GID" "$COVERAGE_HTML" "$WORKDIR"
+    fi
+}
 
-echo "generate cover report to \"coverage.html\"..."
-show_cover_report_html 
-echo "done!"
+main() {
+    generate_cover_data
+    show_cover_report_func
+    show_cover_report_html
+    set_permissions
+    echo "Coverage analysis complete!"
+}
 
-if [ ! -z ${UID} ]; then
-    echo "change uid to ${UID}..."
-    chown -R ${UID} ../coverage.html $workdir
-fi
-
-if [ ! -z ${GID} ]; then
-    echo "change gid to ${GID}..."
-    chown -R :${GID} ../coverage.html $workdir
-fi
+main "$@"
