@@ -3,16 +3,16 @@
 SCRIPT_PATH=$(realpath "$0")
 GITHUB_USERNAME="dbzer0"
 OLD_NAME="go-rest-template"
+CURRENT_DIR=$(basename "$PWD")
 
 # Interactive input
 echo "🚀 Go Project Setup"
 echo "==================="
 
-# Get the new project name
-read -p "Enter new project name (e.g., go-rest-template): " NEW_NAME
+# Get the new project name (по умолчанию берём имя текущего каталога)
+read -p "Enter new project name (default: $CURRENT_DIR): " NEW_NAME
 if [ -z "$NEW_NAME" ]; then
-    echo "❌ Project name cannot be empty"
-    exit 1
+    NEW_NAME="$CURRENT_DIR"
 fi
 
 echo -e "\n📋 Will replace both:"
