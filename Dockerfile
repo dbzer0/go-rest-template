@@ -1,7 +1,7 @@
 #
 # Этап сборки (builder)
 #
-FROM golang:1.22 AS builder
+FROM --platform=linux/amd64 golang:1.23 AS builder
 ENV CGO_ENABLED=0
 
 WORKDIR /go/src/github.com/dbzer0/go-rest-template
@@ -18,7 +18,7 @@ RUN version=$(git describe --abbrev=6 --always --tag || echo "dev") && \
 #
 # Этап базового образа (base) с сертификатами и настройкой пользователя
 #
-FROM alpine AS base
+FROM --platform=linux/amd64 alpine AS base
 RUN apk --no-cache add ca-certificates && \
     addgroup -S PROJECTNAME && \
     adduser -S PROJECTNAME -G PROJECTNAME
@@ -42,4 +42,4 @@ COPY --from=base /etc/passwd /etc/passwd
 COPY --from=base /etc/group /etc/group
 
 USER PROJECTNAME
-ENTRYPOINT ["/bin/PROJECTNAME"]
+ENTRYPOINT ["/bin/PROJECTNAME", "run"]
